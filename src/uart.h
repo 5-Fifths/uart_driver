@@ -47,4 +47,9 @@ uint32_t get_overrun_count(void);
 // Reset the overrun count
 void reset_overrun_count(void);
 
+// Gets the number of times that DATA was overwritten before it was shifted into RX
+uint32_t get_hardware_rx_overflow_count(void);
+
+// Reset the RX overflow count
+void reset_hardware_rx_overflow_count(void);
 #endif

@@ -22,14 +22,14 @@ static void check(bool condition, const char *message) {
 static void clear(uart_registers_t *registers) {
     if (registers == NULL) return;
 
-    // Clear RX
+    // Drain RX
     uint8_t byte = 0;
     while (uart_read_byte(&byte)) continue;
 
     // Reset RX flag
     registers->STATUS &= ~UART_STATUS_RX_OVERFLOW;
 
-    // Clear TX
+    // Drain TX
     uint32_t previousControl = registers->CONTROL;
     uint32_t previousStatus = registers->STATUS;
     registers->STATUS |= UART_STATUS_TX_READY;
@@ -40,8 +40,9 @@ static void clear(uart_registers_t *registers) {
     registers->STATUS = previousStatus;
     registers->CONTROL = previousControl;
 
-    // Clear rx_overrun
+    // Clear rx_overrun counter
     reset_overrun_count();
+    reset_hardware_rx_overflow_count();
 }
 
 // Test: Checking if RX operates in FIFO pattern
@@ -130,7 +131,7 @@ void test_rx_buffer_overrun(void) {
     clear(&registers);
 }
 
-// Test: Ensure that hardware UART_STATUS_RX_OVERFLOW bit is set on DATA overflow
+// Test: Ensure that RX hardware overflows are tracked then cleared
 void test_rx_overflow(void) {
     printf("\nTest: Hardware RX overflows are tracked\n");
     printf("-------------------\n");
@@ -147,7 +148,8 @@ void test_rx_overflow(void) {
     uart_irq_handler();
     registers.STATUS &= ~UART_STATUS_RX_READY;
     check(registers.DATA == '2', "DATA overwritten before it was shifted to RX");
-    check((registers.STATUS & UART_STATUS_RX_OVERFLOW) != 0, "UART_STATUS_RX_OVERFLOW is set");
+    check(get_hardware_rx_overflow_count() == 1, "RX overflow logged");
+    check(!(registers.STATUS & UART_STATUS_RX_OVERFLOW), "UART_STATUS_RX_OVERFLOW was unset");
 
     uint8_t output = 0;
     check(uart_read_byte(&output) && output == '2', "New byte was serviced instead of overwritten byte");

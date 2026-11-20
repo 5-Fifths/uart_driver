@@ -5,6 +5,7 @@
 static ring_buffer_t TX = { 0 };
 static ring_buffer_t RX = { 0 };
 static uint32_t rx_overrun = 0;
+static uint32_t hardware_rx_overflow = 0;
 
 static uart_registers_t *uart_registers = NULL;
 
@@ -17,12 +18,13 @@ void uart_init(uart_registers_t *registers, uint32_t baud_rate) {
     uart_registers->STATUS = 0;
     uart_registers->DATA = 0;
     
-    TX = { 0 };
-    RX = { 0 };
+    TX = (ring_buffer_t){ 0 };
+    RX = (ring_buffer_t){ 0 };
     rx_overrun = 0;
+    hardware_rx_overflow = 0;
 
-    // Enable interrupts
     uart_registers->CONTROL = UART_CONTROL_ENABLE;
+    uart_registers->CONTROL |= UART_CONTROL_RX_IE;
 }
 
 bool uart_write_byte(uint8_t byte) {
@@ -68,6 +70,14 @@ void uart_irq_handler(void) {
         exit_critical();
     }
 
+    // Checks if DATA register received a new byte before it was able to read the last
+    if (uart_registers->STATUS & UART_STATUS_RX_OVERFLOW) {
+        enter_critical();
+        hardware_rx_overflow++;
+        uart_registers->STATUS &= ~UART_STATUS_RX_OVERFLOW;
+        exit_critical();
+    }
+
     // Checks if the TX status bit is set and writes to registers->DATA if it is 
     if (uart_registers->STATUS & UART_STATUS_TX_READY) {
         uint8_t outgoing_byte = 0;
@@ -75,17 +85,15 @@ void uart_irq_handler(void) {
         enter_critical();
         bool success = pop(&TX, &outgoing_byte);
         bool tx_empty = is_empty(&TX);
-        exit_critical();
-
+        
         if (success) {
             uart_registers->DATA = outgoing_byte;
         } 
         
         if (tx_empty) {
-            enter_critical();
             uart_registers->CONTROL &= ~UART_CONTROL_TX_IE;
-            exit_critical();
         }
+        exit_critical();
     }
 }
 
@@ -100,5 +108,19 @@ uint32_t get_overrun_count(void) {
 void reset_overrun_count(void) {
     enter_critical();
     rx_overrun = 0;
+    exit_critical();
+}
+
+uint32_t get_hardware_rx_overflow_count(void) {
+    enter_critical();
+    uint32_t res = hardware_rx_overflow;
+    exit_critical();
+
+    return res;
+}
+
+void reset_hardware_rx_overflow_count(void) {
+    enter_critical();
+    hardware_rx_overflow = 0;
     exit_critical();
 }
