@@ -17,6 +17,10 @@ void uart_init(uart_registers_t *registers, uint32_t baud_rate) {
     uart_registers->STATUS = 0;
     uart_registers->DATA = 0;
     
+    TX = { 0 };
+    RX = { 0 };
+    rx_overrun = 0;
+
     // Enable interrupts
     uart_registers->CONTROL = UART_CONTROL_ENABLE;
 }
@@ -57,13 +61,11 @@ void uart_irq_handler(void) {
 
         enter_critical();
         bool success = push(&RX, incoming_byte);
-        exit_critical();
 
         if (!success) {
-            enter_critical();
             rx_overrun++;
-            exit_critical();
         }
+        exit_critical();
     }
 
     // Checks if the TX status bit is set and writes to registers->DATA if it is 
@@ -80,7 +82,9 @@ void uart_irq_handler(void) {
         } 
         
         if (tx_empty) {
+            enter_critical();
             uart_registers->CONTROL &= ~UART_CONTROL_TX_IE;
+            exit_critical();
         }
     }
 }
